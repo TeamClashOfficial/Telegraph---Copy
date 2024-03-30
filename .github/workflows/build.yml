@@ -1,0 +1,161 @@
+name: Test and Build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.20.7"
+
+      - name: Update repositories
+        run: sudo apt update
+
+      - name: Copy test env
+        run: cp .env.test /tmp/.telegraph.env
+
+      - name: Setup SoftHSM2 
+        run: go test -v infrastructure/*.go -run TestDeploySoftHSM2
+        env:
+          TEST: "true"
+
+      - name: Run tests
+        run: go test -json ./... > /tmp/TestResults.json
+        env:
+          HSM_PATH: "/usr/lib/softhsm/libsofthsm2.so"
+          HSM_TOKEN_LABEL: "test"
+          HSM_PIN: "123456"
+          TEST: "true"
+          SKIP_SOFTHSM2_SETUP: "true"
+          SOFTHSM2_CONF: "/tmp/test/softhsm/softhsm2.conf"
+          HSM_CONFIG_PATH: "/tmp/test/softhsm/softhsm2.conf"
+
+      - name: Upload Go test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: TestResults.json
+          path: /tmp/TestResults.json
+
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.20.7"
+
+      - name: Get GOOS and GOARCH
+        id: get-go-env
+        run: |
+          echo "GOOS=$(go env GOOS)" >> "$GITHUB_OUTPUT"
+          echo "GOARCH=$(go env GOARCH)" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Build
+        run: go build -o telegraph-${{ env.GOOS }}-${{ env.GOARCH }}
+        env:
+          GOOS: ${{ steps.get-go-env.outputs.GOOS }}
+          GOARCH: ${{ steps.get-go-env.outputs.GOARCH }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: telegraph-${{ env.GOOS }}-${{ env.GOARCH }}
+          path: telegraph-${{ env.GOOS }}-${{ env.GOARCH }}
+        env:
+          GOOS: ${{ steps.get-go-env.outputs.GOOS }}
+          GOARCH: ${{ steps.get-go-env.outputs.GOARCH }}
+
+  build-with-enclave:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.20.7"
+
+      - name: Get GOOS and GOARCH
+        id: get-go-env
+        run: |
+          echo "GOOS=$(go env GOOS)" >> "$GITHUB_OUTPUT"
+          echo "GOARCH=$(go env GOARCH)" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Install EGo dependencies
+        run: sudo apt install -y build-essential libssl-dev
+
+      - name: Install EGo
+        run: sudo bash .github/workflows/scripts/install_ego.sh
+
+      - name: Build
+        run: ego-go build -o telegraph-${{ env.GOOS }}-${{ env.GOARCH }}.enclaved
+        env:
+          GOOS: ${{ steps.get-go-env.outputs.GOOS }}
+          GOARCH: ${{ steps.get-go-env.outputs.GOARCH }}
+
+      - name: Sign
+        run: ego sign telegraph-${{ env.GOOS }}-${{ env.GOARCH }}.enclaved
+        env:
+          GOOS: ${{ steps.get-go-env.outputs.GOOS }}
+          GOARCH: ${{ steps.get-go-env.outputs.GOARCH }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: telegraph-${{ env.GOOS }}-${{ env.GOARCH }}.enclaved
+          path: telegraph-${{ env.GOOS }}-${{ env.GOARCH }}.enclaved
+        env:
+          GOOS: ${{ steps.get-go-env.outputs.GOOS }}
+          GOARCH: ${{ steps.get-go-env.outputs.GOARCH }}
+
+  hash:
+    runs-on: ubuntu-latest
+    needs: [build, build-with-enclave]
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Move artifacts
+        run: find artifacts -type f -exec mv "{}" . \;
+
+      - name: Get Hashes
+        run: sha256sum -b telegraph-* > SHA256SUMS
+
+      - name: Upload SHA256SUMS file
+        uses: actions/upload-artifact@v3
+        with:
+          name: SHA256SUMS
+          path: SHA256SUMS

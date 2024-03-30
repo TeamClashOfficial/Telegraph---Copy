@@ -1,0 +1,23 @@
+{
+	"PORT": "7044",
+	"mainPortAddress": "1234",
+	"publicKey": "1234",
+	"isGenesis": true,
+	"ID": "ID",
+	"Moniker": "Moniker String",
+	"Key": "314159265358979323846264338327950288419716939937510582097494459",
+	"HokkETH": "",
+	"genesisIP": "http://18.229.137.38:7044",
+	"IP": "http://127.0.0.1",
+	"partyPassword": "password string",
+	"Threshold": 3,
+	"logLevel": 5,
+	"coreContract": {
+		"chainId": 1,
+		"chainType": "EVM",
+		"name": "ETH",
+		"contractaddress": "0x27E66e0ea5Abf34d412e21FDADB83B32080A255e",
+		"evmWssUrl": "wss://mainnet.infura.io/ws/v3/245bd056a0564a4680c8fb5f3d5aa09a",
+		"evmHttpUrl": "https://mainnet.infura.io/v3/245bd056a0564a4680c8fb5f3d5aa09a"
+	}
+}

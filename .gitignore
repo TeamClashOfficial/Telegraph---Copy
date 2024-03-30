@@ -1,0 +1,9 @@
+.idea
+telegraph
+.vscode/
+data/
+Build/
+TODO.txt
+.env
+
+.DS_Store
